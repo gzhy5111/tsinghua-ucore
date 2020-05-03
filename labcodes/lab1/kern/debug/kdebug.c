@@ -302,5 +302,32 @@ print_stackframe(void) {
       *           NOTICE: the calling funciton's return addr eip  = ss:[ebp+4]
       *                   the calling funciton's ebp = ss:[ebp]
       */
+	uint32_t ebp = read_ebp();
+	uint32_t eip = read_eip();
+
+	// 循环打印，直到 STACKFRAME_DEPTH 栈的深度已经最大，并且还要满足ebp ！= 0
+	int i;
+	for (i = 0; i < STACKFRAME_DEPTH && ebp != 0; i++) {
+		cprintf("ebp: 0x%08x eip: 0x%08x args: ", ebp, eip);
+
+		// ebp + 2才是第一个参数的地址，具体可以看笔记
+		uint32_t *args = (uint32_t *)ebp + 2;
+
+		// 循环打印4个args
+		int j;
+		for (j = 0; j < 4; j++) {
+			cprintf("0x%08x ", args[j]);
+		}
+		cprintf("\n");
+
+		// 打印 kern/debug/kdebug.c:305: print_stackframe+22 类似这行的东西，应该是调试信息
+		print_debuginfo(eip-1);
+
+		// 先把eip指向ebp+1的位置，即函数的返回地址（Return Address）
+		eip = *((uint32_t *)ebp + 1);
+
+		// ebp的内容给ebp回到上层调用函数
+		ebp = *((uint32_t *)ebp);
+	}
 }
 
