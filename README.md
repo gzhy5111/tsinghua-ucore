@@ -1,2 +1,6 @@
 # tsinghua-ucore
 清华大学操作系统课程实验
+
+
+
+2020.5.3	Lab1中的扩展练习Challenge 1和Challenge 2没有完成。其余Lab1实验已完成。
