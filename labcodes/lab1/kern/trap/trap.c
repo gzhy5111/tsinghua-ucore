@@ -46,6 +46,21 @@ idt_init(void) {
       *     You don't know the meaning of this instruction? just google it! and check the libs/x86.h to know more.
       *     Notice: the argument of lidt is idt_pd. try to find it!
       */
+	extern uintptr_t __vectors[];
+
+	// 计算出有多少个IDT，依次遍历他们
+	int i;
+	for (i = 0; i < sizeof(idt) / sizeof(struct gatedesc); i++) {
+
+		// 初始化若干IDT
+		SETGATE(idt[i], 0, GD_KTEXT, __vectors[i], DPL_KERNEL);
+	}
+
+	// T_SWITCH_TOK 的发生时机是在用户空间的，所以对应的dpl需要修改为DPL_USER。
+	SETGATE(idt[T_SWITCH_TOK], 0, GD_KTEXT, __vectors[T_SWITCH_TOK], DPL_USER);
+
+	// 加载IDT，只有特权级为0才允许执行
+	lidt(&idt_pd);
 }
 
 static const char *
@@ -147,6 +162,10 @@ trap_dispatch(struct trapframe *tf) {
          * (2) Every TICK_NUM cycle, you can print some info using a funciton, such as print_ticks().
          * (3) Too Simple? Yes, I think so!
          */
+    ticks++;
+    if (ticks % TICK_NUM == 0) {
+    	print_ticks();
+    }
         break;
     case IRQ_OFFSET + IRQ_COM1:
         c = cons_getc();
