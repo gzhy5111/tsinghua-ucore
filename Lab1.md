@@ -1301,3 +1301,46 @@ struct trapframe {
         break;
 ```
 
+
+
+参考资料与文献：
+
+(28 封私信 _ 80 条消息) 如何理解保护模式_ - 知乎.mhtml
+
+AT&T_GCC_ASM简单介绍-geekerunix-ChinaUnix博客.mhtml
+
+ GNU汇编伪指令操作_运维_leumber的专栏-CSDN博客.mhtml
+
+ I_O操作函数inb, outb, inw, outw_运维_kunlong0909的专栏-CSDN博客.mhtml
+
+Lab_1：练习4——分析bootloader加载ELF格式的OS的过程 - chuyaoxin - 博客园.mhtml
+
+ MIT 6.828 JOS学习笔记5. Exercise 1.3 - fatsheep9146 - 博客园.mhtml', 'name.py', 'Scientific Toolworks Understand 5.1.999 Mac 破解版 序列号 功能强大的代码编程工具_麦氪派.mhtml
+
+ucore lab1 练习4_marszxa的博客-CSDN博客.mhtml
+
+ucore 操作系统实验 lab1小结（含Challenge） – 此生虽苦 来日方长.mhtml
+
+ucore-lab1-练习6report - Frank__Chen - 博客园.mhtml', 'ucore学习之旅之lab1-练习4 - 知乎.mhtml
+
+_UCore实验一：系统软件启动过程_操作系统_Guten_Tag的博客-CSDN博客.mhtml
+
+《ucore lab1 练习3》实验报告_qq_44768749的博客-CSDN博客.mhtml
+
+一个操作系统的实现_关于CPL、RPL、DPL - 云说风轻 - 博客园.mhtml', '关于A20 Gate - whowin的日志 - 网易博客.mhtml_
+
+关于A20_操作系统_车子（chezi）-CSDN博客.mhtml
+
+关于printf输出格式%#08x的解释_C_C++_wangbinyantai的专栏-CSDN博客.mhtml
+
+史上最全的Vim命令 - 知乎.mhtml
+
+堆栈中的EIP EBP ESP_操作系统_大头针的专栏-CSDN博客.mhtm
+
+实验1：系统软件的启动过程 - 复旦大学计算机实验教学中心.pdf
+
+操作系统 内存地址（逻辑地址、线性地址、物理地址）概念_C_C++_Leves’ Blog-CSDN博客.mhtml
+
+操作系统实验（1）：系统软件启动过程 - 张慕晖的博客.mhtml操作系统开发之——打开A20 - mfmdaoyou - 博客园.mhtml
+
+操作系统篇-调用门与特权级（CPL、DPL和RPL） - 卫卐 - 博客园.mhtml', '激活A20地址线详解.doc
