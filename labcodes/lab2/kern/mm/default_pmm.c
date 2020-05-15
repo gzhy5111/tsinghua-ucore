@@ -74,7 +74,7 @@ default_init_memmap(struct Page *base, size_t n) {
         p->flags = p->property = 0;
         set_page_ref(p, 0);
         SetPageProperty(p);
-        list_add_before(&free_list, &(base->page_link));
+        list_add_before(&free_list, &(p->page_link));
     }
     base->property = n;
     nr_free += n;
@@ -86,41 +86,40 @@ default_alloc_pages(size_t n) {
     if (n > nr_free) {
         return NULL;
     }
-    struct Page *page = NULL;
+
+    list_entry_t *len;			// 跟以前的p和q双指针差不多，le相当于前指针，len后指针
     list_entry_t *le = &free_list;
     while ((le = list_next(le)) != &free_list) {
         struct Page *p = le2page(le, page_link);
         if (p->property >= n) {
-            page = p;
-
-            struct Page *pp = NULL;
-            list_entry_t *temp_le = &free_list;
             // 分配页数
             int i;
             for (i = 0; i < n; i++) {
+            	len = list_next(le);
+            	struct Page *pp = le2page(le, page_link);
             	// 每一页的标志位改写
             	// 被内核所保留
             	SetPageReserved(pp);
             	// 不是头页
             	ClearPageProperty(pp);
             	// 既然分配好了，下一步就将其从freelist中删除
-            	list_del(temp_le);
-            	temp_le = list_next(list_next);
+            	list_del(le);
+            	le = len;
             }
-            break;
+            if (p->property > n) {
+				// p指针移动到顶部（这里好象是反着的，其实到了头页）
+				// 修改头页的标志位，可参考高书8.3.2
+				//struct Page *p = le2page(le, page_link);
+				le2page(le, page_link)->property = p->property - n;
+			}
+            // 修改头页的标志位
+            ClearPageProperty(p);
+            SetPageReserved(p);
+            nr_free -= n;
+            return p;
         }
     }
-    // 对头页的标志位进行修改
-    if (page != NULL) {
-        if (page->property > n) {
-        	// p指针移动到顶部（这里好象是反着的，其实到了头页）
-        	// 修改头页的标志位，可参考高书8.3.2
-            struct Page *p = page + n;
-            p->property = page->property - n;
-    }
-        nr_free -= n;
-    }
-    return page;
+    return NULL;
 }
 
 static void
@@ -129,7 +128,7 @@ default_free_pages(struct Page *base, size_t n) {
     // 断言是被内核保留页
     // 这里我不明白为什么申请和释放都标记为“内核保留”？？？
     assert(PageReserved(base));
-    struct Page *p = NULL;
+    struct Page *p;
     list_entry_t *le = &free_list;
     while ((le = list_next(le)) != &free_list) {
     	p = le2page(le, page_link);
@@ -137,19 +136,21 @@ default_free_pages(struct Page *base, size_t n) {
 			break;
 		}
     }
-    for (; p != base + n; p ++) {
+    for (p=base; p < base + n; p ++) {
     	// 因为被释放了，所以重新加回到freelist中
     	list_add_before(le, &(p->page_link));
     	// 每一页的标志位不用改了，改下头页就行了
-        p->flags = 0;
-        set_page_ref(p, 0);
     }
-    // 记录空闲页的数目n
-    base->property = n;
+
+    // 下面这几句话是有顺序的？？？
+    base->flags = 0;
+    set_page_ref(base, 0);
     // 声明是头页
     SetPageProperty(base);
-    base->flags = base->property = 0;
-    set_page_ref(p, 0);
+    // 记录空闲页的数目n
+    base->property = n;
+
+
 
     // 向高位合并
     p = le2page(le, page_link);
@@ -163,7 +164,7 @@ default_free_pages(struct Page *base, size_t n) {
 
     // 向低位合并，参考高书图8-6
     // 现在是在空闲结点（高书中间下面的那个），指针先往前移一个结点，就是高书图8-6(a)最中间的结点（p指向的那个）
-    le = list_prev(le);
+    le = list_prev(&base->page_link);
     p = le2page(le, page_link);
     // p指向中间上面结点的头页，base指向中间下面的结点的头页
     if (le != &free_list && p == base - 1) {
@@ -176,8 +177,9 @@ default_free_pages(struct Page *base, size_t n) {
     			break;
     		}
     		// 那没找到右边空间页，就往前走
-    		p = le2page(le, page_link);
     		le = list_prev(le);
+    		p = le2page(le, page_link);
+
     	}
     }
     nr_free += n;
