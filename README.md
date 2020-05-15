@@ -4,3 +4,5 @@
 
 
 2020.5.3	Lab1中的扩展练习Challenge 1和Challenge 2没有完成。其余Lab1实验已完成。
+
+2020.5.15	lab2中的练习已完成，Challenge除外。
