@@ -51,6 +51,8 @@ _fifo_map_swappable(struct mm_struct *mm, uintptr_t addr, struct Page *page, int
     //record the page access situlation
     /*LAB3 EXERCISE 2: YOUR CODE*/ 
     //(1)link the most recent arrival page at the back of the pra_list_head qeueue.
+    // 在头部插入
+    list_add(head, entry);				// 用list_add()和list_add_after()都行，查看下这个双向链表的操作函数（在list.h）就知道了。
     return 0;
 }
 /*
@@ -66,7 +68,13 @@ _fifo_swap_out_victim(struct mm_struct *mm, struct Page ** ptr_page, int in_tick
      /* Select the victim */
      /*LAB3 EXERCISE 2: YOUR CODE*/ 
      //(1)  unlink the  earliest arrival page in front of pra_list_head qeueue
+     // 尾部删除，因为是双向链表，所以很方便找到尾部
+     // tail指向尾部
+     list_entry_t *tail = head->prev;
+     struct Page *page = le2page(tail, pra_page_link);
+     list_del(tail);
      //(2)  set the addr of addr of this page to ptr_page
+     *ptr_page = page;
      return 0;
 }
 

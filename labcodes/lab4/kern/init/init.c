@@ -38,6 +38,8 @@ kern_init(void) {
     idt_init();                 // init interrupt descriptor table
 
     vmm_init();                 // init virtual memory management
+
+    // proc_init函数启动了创建内核线程的步骤。
     proc_init();                // init process table
     
     ide_init();                 // init ide devices
@@ -50,6 +52,7 @@ kern_init(void) {
     // user/kernel mode switch test
     //lab1_switch_test();
     
+    // 执行线程
     cpu_idle();                 // run idle process
 }
 
