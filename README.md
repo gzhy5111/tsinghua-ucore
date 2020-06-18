@@ -8,3 +8,5 @@
 2020.5.15	lab2中的练习已完成，Challenge除外。
 
 2020.5.31	完成lab3（含challenge部分）
+
+2020.6.18	已完成lab4（challenge除外）
