@@ -21,7 +21,9 @@ __intr_restore(bool flag) {
     }
 }
 
+// 关闭当前处理器上的所有中断处理 保存中断状态
 #define local_intr_save(x)      do { x = __intr_save(); } while (0)
+// 打开中断 恢复了由 local_intr_save() 所保存的中断状态
 #define local_intr_restore(x)   __intr_restore(x);
 
 #endif /* !__KERN_SYNC_SYNC_H__ */

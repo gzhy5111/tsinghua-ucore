@@ -10,6 +10,10 @@ wakeup_proc(struct proc_struct *proc) {
     proc->state = PROC_RUNNABLE;
 }
 
+/*
+ * schedule函数要求调度器切换其他进程执行。
+ * 本函数是调度算法实现代码
+ */
 void
 schedule(void) {
     bool intr_flag;
@@ -33,6 +37,7 @@ schedule(void) {
         }
         next->runs ++;
         if (next != current) {
+        	// 交给CPU去执行
             proc_run(next);
         }
     }

@@ -361,14 +361,24 @@ do_pgfault(struct mm_struct *mm, uint32_t error_code, uintptr_t addr) {
     *   mm->pgdir : the PDT of these vma
     *
     */
-#if 0
-    /*LAB3 EXERCISE 1: YOUR CODE*/
-    ptep = ???              //(1) try to find a pte, if pte's PT(Page Table) isn't existed, then create a PT.
-    if (*ptep == 0) {
-                            //(2) if the phy addr isn't exist, then alloc a page & map the phy addr with logical addr
 
+    /*LAB3 EXERCISE 1: YOUR CODE*/
+    // 通过addr这个线性地址返回对应的虚拟页pte 如果没有get_pte会创建一个虚拟页 同时ptep等于0
+    ptep = get_pte(mm->pgdir, addr, 1);             //(1) try to find a pte, if pte's PT(Page Table) isn't existed, then create a PT.
+    // ptep等于NULL代表alloc_page创建虚拟页失败
+    if (ptep == NULL) {
+    	cprintf("ptep == NULL");		// 方便调试
+    	goto failed;
     }
-    else {
+    // 等于0是创建好虚拟页后还没有物理页与之对应
+    if (*ptep == 0) {
+    	// 尝试分配物理页
+    	if (pgdir_alloc_page(mm->pgdir, addr, perm) == NULL) {     //(2) if the phy addr isn't exist, then alloc a page & map the phy addr with logical addr
+    		cprintf("pgdir_alloc_page(mm->pgdir, addr, perm) == NULL");
+    		goto failed;
+    	}
+    }
+    else {			// 执行到这里的时候，代表存在虚拟页并且原来都有与之对应的物理页，下面尝试换入
     /*LAB3 EXERCISE 2: YOUR CODE
     * Now we think this pte is a  swap entry, we should load data from disk to a page with phy addr,
     * and map the phy addr with logical addr, trigger swap manager to record the access situation of this page.
@@ -381,18 +391,25 @@ do_pgfault(struct mm_struct *mm, uint32_t error_code, uintptr_t addr) {
     *    swap_map_swappable ： set the page swappable
     */
         if(swap_init_ok) {
+        	// 将磁盘中的页换入到内存
             struct Page *page=NULL;
-                                    //(1）According to the mm AND addr, try to load the content of right disk page
-                                    //    into the memory which page managed.
-                                    //(2) According to the mm, addr AND page, setup the map of phy addr <---> logical addr
-                                    //(3) make the page swappable.
+            ret = swap_in(mm, addr, &page);                        //(1）According to the mm AND addr, try to load the content of right disk page
+            if (ret != 0) {
+            	cprintf("swap_in in do_pgfault failed\n");
+            	goto failed;
+            }
+            // 建立虚拟地址和物理地址之间的对应关系                         						 //    into the memory which page managed.
+            page_insert(mm->pgdir, page, addr, perm);              //(2) According to the mm, addr AND page, setup the map of phy addr <---> logical addr
+            // 最后的swap_in等于1使页面可替换
+            swap_map_swappable(mm, addr, page, 1);     //(3) make the page swappable.
+            //page->pra_vaddr = addr;
         }
         else {
             cprintf("no swap_init_ok but ptep is %x, failed\n",*ptep);
             goto failed;
         }
    }
-#endif
+
    ret = 0;
 failed:
     return ret;
