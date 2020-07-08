@@ -3,7 +3,8 @@
 switch_to:                      # switch_to(from, to)
 
     # save from's registers
-    movl 4(%esp), %eax          # eax points to from
+    movl 4(%esp), %eax          # eax points to from 	# 向上4个字节存放的是“from”这个参数
+
     popl 0(%eax)                # save eip !popl
     movl %esp, 4(%eax)
     movl %ebx, 8(%eax)

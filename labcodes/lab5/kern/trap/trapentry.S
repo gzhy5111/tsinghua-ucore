@@ -42,6 +42,8 @@ __trapret:
     addl $0x8, %esp
     iret
 
+    # 当iret返回时，会跳到entry.S 中的 kernel_thread_entry:
+
 .globl forkrets
 forkrets:
     # set stack to this new process's trapframe
