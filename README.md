@@ -10,3 +10,5 @@
 2020.5.31	完成lab3（含challenge部分）
 
 2020.6.18	已完成lab4（challenge除外）
+
+2020.7.8	已完成LAB5（challenge部分除外）
