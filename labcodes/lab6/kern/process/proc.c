@@ -79,8 +79,8 @@ struct proc_struct *current = NULL;
 static int nr_process = 0;
 
 void kernel_thread_entry(void);
-void forkrets(struct trapframe *tf);
-void switch_to(struct context *from, struct context *to);
+void forkrets(struct trapframe *tf);						// 调用 trap/trapentry.S 中的 forkrets:
+void switch_to(struct context *from, struct context *to);	// 调用switch.S
 
 // alloc_proc - alloc a proc_struct and init all fields of proc_struct
 static struct proc_struct *
@@ -103,6 +103,7 @@ alloc_proc(void) {
      *       uint32_t flags;                             // Process flag
      *       char name[PROC_NAME_LEN + 1];               // Process name
      */
+
      //LAB5 YOUR CODE : (update LAB4 steps)
     /*
      * below fields(add in LAB5) in proc_struct need to be initialized	
@@ -111,14 +112,68 @@ alloc_proc(void) {
 	 */
      //LAB6 YOUR CODE : (update LAB5 steps)
     /*
-     * below fields(add in LAB6) in proc_struct need to be initialized
-     *     struct run_queue *rq;                       // running queue contains Process
-     *     list_entry_t run_link;                      // the entry linked in run queue
-     *     int time_slice;                             // time slice for occupying the CPU
+     * below fields（以下字段）(add in LAB6) in proc_struct need to be initialized（初始化）
+     * 当然，这些字段都在 proc.h 头文件中的 proc_struct 结构体中定义过了。
+     *     struct run_queue *rq;                       // running queue contains Process（运行队列）
+     *     list_entry_t run_link;                      // the entry linked in run queue（运行队列指针）
+     *     int time_slice;                             // time slice for occupying the CPU（时间片）
      *     skew_heap_entry_t lab6_run_pool;            // FOR LAB6 ONLY: the entry in the run pool
      *     uint32_t lab6_stride;                       // FOR LAB6 ONLY: the current stride of the process
      *     uint32_t lab6_priority;                     // FOR LAB6 ONLY: the priority of process, set by lab6_set_priority(uint32_t)
      */
+
+    	/*
+    	 * 执行的是第一步初始化工作
+    	 */
+
+    	proc->state = PROC_UNINIT;							// 设置了进程的状态为“初始”态，这表示进程已经 “出生”了，正在获取资源茁壮成长中；
+
+    	proc->pid = -1;										// 未分配的进程pid是-1 先设置pid为无效值-1，用户调完alloc_proc函数后再根据实际情况设置pid。
+															// 设置了进程的pid为-1，这表示进程的“身份证号”还没有办好；
+
+    	proc->cr3 = boot_cr3;								// boot_cr3指向了uCore启动时建立好的内核虚拟空间的页目录表首地址
+															// 表明由于该内核线程在内核中运行，故采用为uCore内核已经建立的页表，即设置为在uCore内核页表的起始地址boot_cr3。
+
+    	proc->runs = 0;
+		proc->kstack = 0;									// 记录了分配给该进程/线程的内核栈的位置
+		proc->need_resched = 0;								// 是否需要调度
+		proc->parent = NULL;								// 父进程
+		proc->mm = 0;									// 虚拟内存结构体（lab4实验可忽略）
+		/*
+		 * void *memset(void *s, int c, unsigned long n)
+		 * 函数解释：将s中当前位置后面的n个字节 （typedef unsigned int size_t ）用 ch 替换并返回 s
+		 * 该函数用于清空一个结构体中所有的成员变量，下面解释三个参数：
+		 * 第一个参数：位置指针，例如数组名、结构体首地址
+		 * 第二个参数：替换为什么
+		 * memset 函数的第三个参数 n 的值一般用 sizeof() 获取
+		 */
+		memset(&(proc->context), 0, sizeof(struct context)); 	// 上下文结构体
+		proc->tf = NULL;
+
+		proc->flags = 0;
+		// 清空数组就不用sizeof了，第三个参数直接写数组的大小-1即可
+		memset(proc->name, 0, PROC_NAME_LEN);
+
+		// LAB5新增的
+		proc->wait_state = 0;							// 进程刚开始创建，都是等待状态。原因是因为需要调度。
+		proc->cptr = proc->yptr = proc->optr = NULL;
+
+		// LAB6新增
+		proc->rq = NULL;                       			// 运行队列，刚alloc进程肯定没有放入任何队列，所以为NULL
+		// 下面这个 run_link 我刚开始也不知道是什么玩意儿，但我知道 run_link 肯定要在调度函数中使用到。我就去 default_sched.c 里面搜，慢慢就懂用途了。
+		// run_link 是个双向链表，list_entry_t 这个结构体我们已经很熟悉了，ucore整个数据结构很多都基于 list_entry_t 。
+		// 那我们想啊，你要用这个双向链表，这个数据结构本身已经封装好了，那应该是有函数可以供其初始化的，也就是新创建一个双向链表。
+		// lish.h 文件中查下，可以用 list_init(list_entry_t *elm) 这个函数新建。
+		list_init(&(proc->run_link));                   // 运行队列的指针
+		proc->time_slice = 0;                           // 时间片，初始化为0
+		// 下面这 skew_heap_entry_t lab6_run_pool;
+		// lab6_run_pool 又是啥玩意儿？？
+		// 点 skew_heap_entry_t 进入看看，指不定和刚才的 list_entry_t 是差不多的东西，或许已经封装好函数了可以直接调用。
+		// 果然发现一个函数 skew_heap_init(skew_heap_entry_t *a)
+		skew_heap_init(&(proc->lab6_run_pool));			// FOR LAB6 ONLY: the entry in the run pool
+		proc->lab6_stride = 0;                       	// 初始化步数
+		proc->lab6_priority = 0;                     	// 初始化优先级
+
     }
     return proc;
 }
@@ -211,8 +266,11 @@ proc_run(struct proc_struct *proc) {
         local_intr_save(intr_flag);
         {
             current = proc;
+            // 切换栈
             load_esp0(next->kstack + KSTACKSIZE);
+            // 切换目录表
             lcr3(next->cr3);
+            // 切换context; context函数是由汇编语言实现的（switch.S）
             switch_to(&(prev->context), &(next->context));
         }
         local_intr_restore(intr_flag);
@@ -414,6 +472,55 @@ do_fork(uint32_t clone_flags, uintptr_t stack, struct trapframe *tf) {
 	*    update step 5: insert proc_struct into hash_list && proc_list, set the relation links of process
     */
 	
+
+    /*
+	 * 想干的事：创建当前内核线程的一个副本，它们的执行上下文、代码、数据都一样，但是存储位置不同，PID不同。
+	 */
+	// 调用alloc_proc() 为要创建的线程分配空间
+	// 如果第一步 alloc 都失败的话，应该来说是比较严重的错误。直接退出。
+	if ((proc = alloc_proc()) == NULL) {
+		goto fork_out;
+	}
+
+
+	proc->parent = current;
+	assert(proc->wait_state == 0);
+
+	// 获取被拷贝的进程的pid号 即父进程的pid
+	//proc->parent = current;
+	// 分配大小为 KSTACKPAGE 的页面作为进程内核堆栈
+	setup_kstack(proc);
+	// 为新进程创建新的虚存空间
+	// 注意！copy还调用了copy_range函数。
+	// copy_range函数：拷贝父进程的内存到新进程（LAB5 练习2）
+	copy_mm(clone_flags, proc);
+	// 拷贝原进程上下文到新进程
+	copy_thread(proc, stack, tf);
+
+
+	bool intr_flag;
+	// 停止中断
+	local_intr_save(intr_flag);
+	// {} 用来限定花括号中变量的作用域，使其不影响外面。
+	{
+		proc->pid = get_pid();
+		// 新进程添加到 hash方式组织的的进程链表，以便于以后对某个指定的线程的查找（速度更快）
+		hash_proc(proc);
+		// 将线程加入到所有线程的链表中，以便于调度
+		//list_add(&proc_list, &(proc->list_link));
+		// 将全局线程的数目加1
+		//nr_process ++;
+		set_links(proc);
+	}
+	// 允许中断
+	local_intr_restore(intr_flag);
+
+
+	// 唤醒新进程
+	wakeup_proc(proc);
+	// 新进程号
+	ret = proc->pid;
+	
 fork_out:
     return ret;
 
@@ -487,21 +594,25 @@ do_exit(int error_code) {
  */
 static int
 load_icode(unsigned char *binary, size_t size) {
-    if (current->mm != NULL) {
+    // 检查寄居蟹本身有没有肉，没肉才正常。后面可以分配新的内存结构体，新的页表等。
+	if (current->mm != NULL) {
+    	// 如果当前进程的内存不为空，debug的时候会将其打印输出
         panic("load_icode: current->mm must be empty.\n");
     }
 
     int ret = -E_NO_MEM;
     struct mm_struct *mm;
-    //(1) create a new mm for current process
+    //(1) 为当前进程建立新的内存管理结构体
     if ((mm = mm_create()) == NULL) {
         goto bad_mm;
     }
-    //(2) create a new PDT, and mm->pgdir= kernel virtual addr of PDT
+    //(2) create a new PDT, and mm->pgdir= kernel virtual addr of PDT；
+    // 创建新的页表
     if (setup_pgdir(mm) != 0) {
         goto bad_pgdir_cleanup_mm;
     }
     //(3) copy TEXT/DATA section, build BSS parts in binary to memory space of process
+    // 通过解析elf格式的文件得到代码段，数据段等格式在哪。
     struct Page *page;
     //(3.1) get the file header of the bianry program (ELF format)
     struct elfhdr *elf = (struct elfhdr *)binary;
@@ -528,11 +639,13 @@ load_icode(unsigned char *binary, size_t size) {
             continue ;
         }
     //(3.5) call mm_map fun to setup the new vma ( ph->p_va, ph->p_memsz)
+    // 建立VMA
         vm_flags = 0, perm = PTE_U;
-        if (ph->p_flags & ELF_PF_X) vm_flags |= VM_EXEC;
-        if (ph->p_flags & ELF_PF_W) vm_flags |= VM_WRITE;
-        if (ph->p_flags & ELF_PF_R) vm_flags |= VM_READ;
+        if (ph->p_flags & ELF_PF_X) vm_flags |= VM_EXEC;			// 如果是代码段，拥有可执行属性
+        if (ph->p_flags & ELF_PF_W) vm_flags |= VM_WRITE;			// 如果是数据段，拥有可写属性
+        if (ph->p_flags & ELF_PF_R) vm_flags |= VM_READ;			// 如果是数据段，拥有可读属性
         if (vm_flags & VM_WRITE) perm |= PTE_W;
+        // 通过 mm_map 函数完成对合法空间的建立，但还没有建立页表。
         if ((ret = mm_map(mm, ph->p_va, ph->p_memsz, vm_flags, NULL)) != 0) {
             goto bad_cleanup_mmap;
         }
@@ -545,6 +658,7 @@ load_icode(unsigned char *binary, size_t size) {
      //(3.6) alloc memory, and  copy the contents of every program section (from, from+end) to process's memory (la, la+end)
         end = ph->p_va + ph->p_filesz;
      //(3.6.1) copy TEXT/DATA section of bianry program
+     // 拷贝，建立虚地址和物理地址的映射关系
         while (start < end) {
             if ((page = pgdir_alloc_page(mm->pgdir, la, perm)) == NULL) {
                 goto bad_cleanup_mmap;
@@ -585,6 +699,7 @@ load_icode(unsigned char *binary, size_t size) {
         }
     }
     //(4) build user stack memory
+    // 建立用户栈
     vm_flags = VM_READ | VM_WRITE | VM_STACK;
     if ((ret = mm_map(mm, USTACKTOP - USTACKSIZE, USTACKSIZE, vm_flags, NULL)) != 0) {
         goto bad_cleanup_mmap;
@@ -601,6 +716,8 @@ load_icode(unsigned char *binary, size_t size) {
     lcr3(PADDR(mm->pgdir));
 
     //(6) setup trapframe for user environment
+    // 这里是很大的一部分，涉及到特权级转换。同时也时lab1 challenge部分内容。
+    // 我们知道特权级转换是通过中断完成的。
     struct trapframe *tf = current->tf;
     memset(tf, 0, sizeof(struct trapframe));
     /* LAB5:EXERCISE1 YOUR CODE
@@ -612,6 +729,13 @@ load_icode(unsigned char *binary, size_t size) {
      *          tf_eip should be the entry point of this binary program (elf->e_entry)
      *          tf_eflags should be set to enable computer to produce Interrupt
      */
+    tf->tf_cs = USER_CS;
+    tf->tf_ds = tf->tf_es = tf->tf_ss = USER_DS;
+    tf->tf_esp = USTACKTOP;
+    tf->tf_eip = elf->e_entry;			// 中断返回现场。可以执行elf文件的开始部分。即第6部分的作用就是伪造中断返回现场。
+    tf->tf_eflags = FL_IF;				// 允许中断
+
+
     ret = 0;
 out:
     return ret;
@@ -629,6 +753,8 @@ bad_mm:
 //           - call load_icode to setup new memory space accroding binary prog.
 int
 do_execve(const char *name, size_t len, unsigned char *binary, size_t size) {
+	// 本函数所干的事跟寄居蟹差不多
+
     struct mm_struct *mm = current->mm;
     if (!user_mem_check(mm, (uintptr_t)name, len, 0)) {
         return -E_INVAL;
@@ -641,16 +767,22 @@ do_execve(const char *name, size_t len, unsigned char *binary, size_t size) {
     memset(local_name, 0, sizeof(local_name));
     memcpy(local_name, name, len);
 
+    // 寄居蟹首先把之前海螺的肉去掉
     if (mm != NULL) {
         lcr3(boot_cr3);
         if (mm_count_dec(mm) == 0) {
+        	// 清除原来进程内存管理部分
             exit_mmap(mm);
+            // 页表清空
             put_pgdir(mm);
             mm_destroy(mm);
         }
         current->mm = NULL;
     }
     int ret;
+
+    // 然后寄居蟹自己住进去
+    // load_icode 函数的功能则在于为执行新的程序初始化好内存空间（一系列的准备工作，内存初始化啊，伪造中断返回现场以便于跳转到elf文件开始处去执行啊）。
     if ((ret = load_icode(binary, size)) != 0) {
         goto execve_exit;
     }

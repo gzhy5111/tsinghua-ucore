@@ -31,19 +31,21 @@ struct run_queue;
 
 // The introduction of scheduling classes is borrrowed from Linux, and makes the 
 // core scheduler quite extensible. These classes (the scheduler modules) encapsulate 
-// the scheduling policies. 
+// the scheduling policies（策略）.
+// 调度类
 struct sched_class {
-    // the name of sched_class
+    // 调度器名字
     const char *name;
-    // Init the run queue
+    // 初始化就绪队列
     void (*init)(struct run_queue *rq);
-    // put the proc into runqueue, and this function must be called with rq_lock
+    // 入队：将进程放入就绪队列中, and this function must be called with rq_lock（lock与lab7有关）
     void (*enqueue)(struct run_queue *rq, struct proc_struct *proc);
-    // get the proc out runqueue, and this function must be called with rq_lock
+    // 出队：and this function must be called with rq_lock
     void (*dequeue)(struct run_queue *rq, struct proc_struct *proc);
-    // choose the next runnable task
+    // 切换：选择下一个可运行的任务
     struct proc_struct *(*pick_next)(struct run_queue *rq);
     // dealer of the time-tick
+    // 产生一次时钟中断就会调用该函数
     void (*proc_tick)(struct run_queue *rq, struct proc_struct *proc);
     /* for SMP support in the future
      *  load_balance
@@ -54,6 +56,7 @@ struct sched_class {
      */
 };
 
+// 就绪队列
 struct run_queue {
     list_entry_t run_list;
     unsigned int proc_num;
