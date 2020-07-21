@@ -384,18 +384,33 @@ get_pte(pde_t *pgdir, uintptr_t la, bool create) {
      *   PTE_W           0x002                   // page table/directory entry flags bit : Writeable
      *   PTE_U           0x004                   // page table/directory entry flags bit : User can access
      */
-#if 0
-    pde_t *pdep = NULL;   // (1) find page directory entry
-    if (0) {              // (2) check if entry is not present
-                          // (3) check if creating is needed, then alloc page for page table
-                          // CAUTION: this page is used for page table, not for common data page
-                          // (4) set page reference
-        uintptr_t pa = 0; // (5) get linear address of page
-                          // (6) clear page content using memset
-                          // (7) set page directory entry's permission
-    }
-    return NULL;          // (8) return page table entry
-#endif
+
+	// 获取页目录表（一级页表）
+	pde_t *pdep = &pgdir[PDX(la)];   // (1) find page directory entry
+	// 页表、页目录表不存在
+	if (!(PTE_P & *pdep)) {              // (2) check if entry is not present
+		struct Page *page = NULL;
+		// 如果不需要create或者alloc_page失败
+		if(!create || (page = alloc_page()) == NULL) {				  // (3) check if creating is needed, then alloc page for page table
+			return NULL;
+		}                  // CAUTION: this page is used for page table, not for common data page
+		// 到这里，如果需要create的话，就已经执行过alloc了
+		// 引用数+1
+		set_page_ref(page,1);					// (4) set page reference
+		// 获得线性地址
+		uintptr_t pa = page2pa(page); 			// (5) get linear address of page
+		// If you need to visit a physical address, please use KADDR()
+		// KADDR(pa)将物理地址转换为内核虚拟地址，第二个参数将这一页清空，第三个参数是4096也就是一页的大小
+		memset(KADDR(pa), 0, PGSIZE);      		// (6) clear page content using memset
+		// 页目录项内容 = (页表起始物理地址 &0x0FFF) | PTE_U | PTE_W | PTE_P
+		*pdep = pa | PTE_U | PTE_W | PTE_P;		// (7) set page directory entry's permission
+	}
+	// 返回pte_t *，页表的地址
+	return &((pte_t *)KADDR(PDE_ADDR(*pdep)))[PTX(la)];
+	// 不用再返回NULL了，前面如果不需要create或者alloc失败就会返回NULL
+	//return NULL;          // (8) return page table entry
+
+
 }
 
 //get_page - get related Page struct for linear address la using PDT pgdir
@@ -441,7 +456,20 @@ page_remove_pte(pde_t *pgdir, uintptr_t la, pte_t *ptep) {
                                   //(6) flush tlb
     }
 #endif
+
+    if (*ptep & PTE_P) {                      //(1) check if this page table entry is present（存在）
+        struct Page *page = pte2page(*ptep); //(2) find corresponding page to pte
+        if (page_ref_dec(page) == 0) {               //(3) decrease page reference
+        	free_page(page);
+        }
+        *ptep = 0;						  //(4) and free this page when page reference reachs 0
+                                  	  	  //(5) clear second page table entry
+        tlb_invalidate(pgdir, la);  	  //(6) flush tlb
+    }
 }
+
+
+
 
 void
 unmap_range(pde_t *pgdir, uintptr_t start, uintptr_t end) {
@@ -500,7 +528,7 @@ copy_range(pde_t *to, pde_t *from, uintptr_t start, uintptr_t end, bool share) {
             if ((nptep = get_pte(to, start, 1)) == NULL) {
                 return -E_NO_MEM;
             }
-        uint32_t perm = (*ptep & PTE_USER);
+        uint32_t perm = (*ptep & PTE_USER);				// 本页面权限
         //get page from ptep
         struct Page *page = pte2page(*ptep);
         // alloc a page for process B
@@ -509,9 +537,9 @@ copy_range(pde_t *to, pde_t *from, uintptr_t start, uintptr_t end, bool share) {
         assert(npage!=NULL);
         int ret=0;
         /* LAB5:EXERCISE2 YOUR CODE
-         * replicate content of page to npage, build the map of phy addr of nage with the linear addr start
+         * replicate（复制） content of page to npage, build the map of phy addr of nage with the linear addr start
          *
-         * Some Useful MACROs and DEFINEs, you can use them in below implementation.
+         * Some Useful MACROs and DEFINEs, you can use them in below implementation.（在下面实现）
          * MACROs or Functions:
          *    page2kva(struct Page *page): return the kernel vritual addr of memory which page managed (SEE pmm.h)
          *    page_insert: build the map of phy addr of an Page with the linear addr la
@@ -522,6 +550,11 @@ copy_range(pde_t *to, pde_t *from, uintptr_t start, uintptr_t end, bool share) {
          * (3) memory copy from src_kvaddr to dst_kvaddr, size is PGSIZE
          * (4) build the map of phy addr of  nage with the linear addr start
          */
+        char *src_kvaddr = page2kva(page);
+        char *dst_kvaddr = page2kva(npage);
+        memcpy(dst_kvaddr, src_kvaddr, PGSIZE);
+        ret = page_insert(to, npage, start, perm);				// 建立虚拟地址与线性地址映射
+
         assert(ret == 0);
         }
         start += PGSIZE;

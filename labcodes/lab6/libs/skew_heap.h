@@ -66,6 +66,7 @@ skew_heap_insert(skew_heap_entry_t *a, skew_heap_entry_t *b,
      return skew_heap_merge(a, b, comp);
 }
 
+// 选择队列中stride值最小的进程
 static inline skew_heap_entry_t *
 skew_heap_remove(skew_heap_entry_t *a, skew_heap_entry_t *b,
                  compare_f comp)

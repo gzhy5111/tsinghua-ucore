@@ -45,7 +45,7 @@ struct proc_struct {
     int pid;                                    // Process ID
     int runs;                                   // the running times of Proces
     uintptr_t kstack;                           // Process kernel stack
-    volatile bool need_resched;                 // bool value: need to be rescheduled to release CPU?
+    volatile bool need_resched;                 // bool value: need to be rescheduled to release CPU?（1:允许被调度；0：不允许）
     struct proc_struct *parent;                 // the parent process
     struct mm_struct *mm;                       // Process's memory management field
     struct context context;                     // Switch here to run process
@@ -60,10 +60,11 @@ struct proc_struct {
     struct proc_struct *cptr, *yptr, *optr;     // relations between processes
     struct run_queue *rq;                       // running queue contains Process
     list_entry_t run_link;                      // the entry linked in run queue
-    int time_slice;                             // time slice for occupying the CPU
-    skew_heap_entry_t lab6_run_pool;            // FOR LAB6 ONLY: the entry in the run pool
-    uint32_t lab6_stride;                       // FOR LAB6 ONLY: the current stride of the process 
-    uint32_t lab6_priority;                     // FOR LAB6 ONLY: the priority of process, set by lab6_set_priority(uint32_t)
+    int time_slice;                             // time slice（时间片） for occupying the CPU
+    // 下面这三个标志是提供给斜堆数据结构使用的，仅仅在lab6中的练习2 stride scheduling 算法中被使用
+    skew_heap_entry_t lab6_run_pool;            // FOR LAB6 ONLY（供LAB6斜堆数据结构使用）: the entry in the run pool
+    uint32_t lab6_stride;                       // 步长
+    uint32_t lab6_priority;                     // 优先级
 };
 
 #define PF_EXITING                  0x00000001      // getting shutdown
