@@ -66,25 +66,29 @@
 
 typedef struct monitor monitor_t;
 
+// 条件变量的结构体
 typedef struct condvar{
-    semaphore_t sem;        // the sem semaphore  is used to down the waiting proc, and the signaling proc should up the waiting proc
-    int count;              // the number of waiters on condvar
-    monitor_t * owner;      // the owner(monitor) of this condvar
+    semaphore_t sem;        // 具体实现上，用信号量实现了等待队列。可以更灵活的实现进程的唤醒和睡眠操作。the sem semaphore  is used to down the waiting proc, and the signaling proc should up the waiting proc
+    int count;              // 等待在条件变量上的进程个数。the number of waiters on condvar
+    monitor_t * owner;      // 条件变量与管程的关系。the owner(monitor) of this condvar
 } condvar_t;
 
+// 管程的结构体
 typedef struct monitor{
     semaphore_t mutex;      // the mutex lock for going into the routines in monitor, should be initialized to 1
     semaphore_t next;       // the next semaphore is used to down the signaling proc itself, and the other OR wakeuped waiting proc should wake up the sleeped signaling proc.
     int next_count;         // the number of of sleeped signaling proc
-    condvar_t *cv;          // the condvars in monitor
+    condvar_t *cv;          // 条件变量。the condvars in monitor
 } monitor_t;
 
 // Initialize variables in monitor.
 void     monitor_init (monitor_t *cvp, size_t num_cv);
 // Unlock one of threads waiting on the condition variable. 
+// 当满足条件时，激活进程，相当于信号量中的V操作。
 void     cond_signal (condvar_t *cvp);
 // Suspend calling thread on a condition variable waiting for condition atomically unlock mutex in monitor,
 // and suspends calling thread on conditional variable after waking up locks mutex.
+// 当一个条件得不到满足，会让当前线程睡眠。相当于信号量中的P操作。
 void     cond_wait (condvar_t *cvp);
      
 #endif /* !__KERN_SYNC_MONITOR_CONDVAR_H__ */
