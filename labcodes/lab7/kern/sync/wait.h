@@ -10,10 +10,10 @@ typedef struct {
 struct proc_struct;
 
 typedef struct {
-    struct proc_struct *proc;
-    uint32_t wakeup_flags;
-    wait_queue_t *wait_queue;
-    list_entry_t wait_link;
+    struct proc_struct *proc;			// 被催眠的进程名字
+    uint32_t wakeup_flags;				// 睡眠原因
+    wait_queue_t *wait_queue;			// 等待队列
+    list_entry_t wait_link;				// 等待队列初始化
 } wait_t;
 
 #define le2wait(le, member)         \
@@ -37,6 +37,7 @@ void wakeup_queue(wait_queue_t *queue, uint32_t wakeup_flags, bool del);
 
 void wait_current_set(wait_queue_t *queue, wait_t *wait, uint32_t wait_state);
 
+// 不断的在等待队列中扫描，遇到合适情况就会将对应进程从等待队列中剔除。
 #define wait_current_del(queue, wait)                                       \
     do {                                                                    \
         if (wait_in_queue(wait)) {                                          \
