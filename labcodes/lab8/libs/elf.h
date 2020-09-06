@@ -13,12 +13,12 @@ struct elfhdr {
     uint16_t e_machine;   // 3=x86, 4=68K, etc.
     uint32_t e_version;   // file version, always 1
     uint32_t e_entry;     // entry point if executable
-    uint32_t e_phoff;     // file position of program header or 0
+    uint32_t e_phoff;     // file position of program header or 0 —— program header的文件位置或0
     uint32_t e_shoff;     // file position of section header or 0
     uint32_t e_flags;     // architecture-specific flags, usually 0
     uint16_t e_ehsize;    // size of this elf header
     uint16_t e_phentsize; // size of an entry in program header
-    uint16_t e_phnum;     // number of entries in program header or 0
+    uint16_t e_phnum;     // number of entries in program header or 0 —— program header条目个数，即多少个段
     uint16_t e_shentsize; // size of an entry in section header
     uint16_t e_shnum;     // number of entries in section header or 0
     uint16_t e_shstrndx;  // section number that contains section name strings

@@ -348,7 +348,7 @@ sfs_bmap_free_nolock(struct sfs_fs *sfs, struct sfs_inode *sin, uint32_t index) 
  * @sfs:      sfs file system
  * @sin:      sfs inode in memory
  * @index:    the logical index of disk block in inode
- * @ino_store:the NO. of disk block
+ * @ino_store:该函数的作用，期望返回的值，返回第多少号磁盘block the NO. of disk block
  */
 static int
 sfs_bmap_load_nolock(struct sfs_fs *sfs, struct sfs_inode *sin, uint32_t index, uint32_t *ino_store) {
@@ -546,12 +546,13 @@ sfs_close(struct inode *node) {
  * @sin:      sfs inode in memory
  * @buf:      the buffer Rd/Wr
  * @offset:   the offset of file
- * @alenp:    the length need to read (is a pointer). and will RETURN the really Rd/Wr lenght
+ * @alenp:    (需要读取的长度(是一个指针)。并返回真正的Rd/Wr lenght) the length need to read (is a pointer). and will RETURN the really Rd/Wr lenght
  * @write:    BOOL, 0 read, 1 write
  */
+// 形参：Simple file system整体框架的指针sfs， Simple file system内存指针sfs， iob->io_base， iob是缓存指针， alen = iob->io_resid， write是读写标志符（0表示读，1表示写）
 static int
 sfs_io_nolock(struct sfs_fs *sfs, struct sfs_inode *sin, void *buf, off_t offset, size_t *alenp, bool write) {
-    struct sfs_disk_inode *din = sin->din;
+    struct sfs_disk_inode *din = sin->din;		// 通过din指针完成 文件/目录 的 打开、读写、关闭操作
     assert(din->type != SFS_TYPE_DIR);
     off_t endpos = offset + *alenp, blkoff;
     *alenp = 0;
@@ -574,6 +575,9 @@ sfs_io_nolock(struct sfs_fs *sfs, struct sfs_inode *sin, void *buf, off_t offset
         }
     }
 
+    // sfs_buf_op = sfs_rbuf,
+    // sfs_block_op = sfs_rblock，
+    // 设置读取的函数操作。
     int (*sfs_buf_op)(struct sfs_fs *sfs, void *buf, size_t len, uint32_t blkno, off_t offset);
     int (*sfs_block_op)(struct sfs_fs *sfs, void *buf, uint32_t blkno, uint32_t nblks);
     if (write) {
@@ -586,8 +590,8 @@ sfs_io_nolock(struct sfs_fs *sfs, struct sfs_inode *sin, void *buf, off_t offset
     int ret = 0;
     size_t size, alen = 0;
     uint32_t ino;
-    uint32_t blkno = offset / SFS_BLKSIZE;          // The NO. of Rd/Wr begin block
-    uint32_t nblks = endpos / SFS_BLKSIZE - blkno;  // The size of Rd/Wr blocks
+    uint32_t blkno = offset / SFS_BLKSIZE;          // 块号，即第几块block（从0开始计数） The NO. of Rd/Wr begin block
+    uint32_t nblks = endpos / SFS_BLKSIZE - blkno;  // 整块都被覆盖的块的个数。The size of Rd/Wr blocks
 
   //LAB8:EXERCISE1 YOUR CODE HINT: call sfs_bmap_load_nolock, sfs_rbuf, sfs_rblock,etc. read different kind of blocks in file
 	/*
@@ -599,6 +603,55 @@ sfs_io_nolock(struct sfs_fs *sfs, struct sfs_inode *sin, void *buf, off_t offset
      * (3) If end position isn't aligned with the last block, Rd/Wr some content from begin to the (endpos % SFS_BLKSIZE) of the last block
 	 *       NOTICE: useful function: sfs_bmap_load_nolock, sfs_buf_op	
 	*/
+
+    // 先处理起始的没有对齐到块的部分（1），再以块为单位循环处理中间的部分(2），最后处理末尾剩余的部分(3）。
+    //  (1) 判断被需要读/写的区域所覆盖的数据块中的第一块是否是完全被覆盖的，如果不是，则需要调用非整块数据块进行读或写的函数来完成相应操作
+    if ( (blkoff = offset % SFS_BLKSIZE) != 0) {								// SFS_BLKSIZE 是4096，即4k，是一个数据块的大小
+    	// 计算出在第一块数据块中进行读或写操作需要的数据长度
+		size = (nblks != 0) ? (SFS_BLKSIZE - blkoff) : (endpos - offset);
+		// 得到blkno对应的inode编号（获取当前数据块在磁盘上的inode编号）存在ino变量中
+		if ( (ret = sfs_bmap_load_nolock(sfs, sin, blkno, &ino) ) != 0) {		// 不等于0就是未出错
+			goto out;
+		}
+		// 根据是读还是写来进行实际的读写操作
+		if ( (ret = sfs_buf_op(sfs, buf, size, ino, blkoff) ) != 0) {
+			goto out;
+		}
+		// alen 和 buf 是已经维护好的数据长度信息。buf是内存中的缓存，暂时不用管，就记着是跟alen一起增加的就行。
+		alen += size;
+		if (nblks == 0) {
+			goto out;
+		}
+		buf += size;
+		blkno++;
+		nblks--;
+    }
+    // (2) 刚好占用一整个数据块
+	size = 	SFS_BLKSIZE;		// 数据块就是一个4k空间咯
+	while (nblks != 0) {		// nblks代表整块都需要覆盖的块个数，后面继续执行后面的第二个数据块，第三个数据块... ...nblks ，等于 0 代表是首个数据块
+		if ((ret = sfs_bmap_load_nolock(sfs, sin, blkno, &ino)) != 0) {
+			goto out;
+		}
+		if ( (ret = sfs_block_op(sfs, buf, ino, 1) ) != 0) {
+			goto out;
+		}
+		alen += size;
+		buf += size;
+		blkno++;
+		nblks--;
+	}
+
+    // (3)读取尾部非整块数据大小，即size
+    if ( (size = endpos % SFS_BLKSIZE) != 0) {
+    	if ((ret = sfs_bmap_load_nolock(sfs, sin, blkno, &ino)) != 0) {
+    		goto out;
+    	}
+    	if ( (ret = sfs_buf_op(sfs, buf, size, ino, 0) ) != 0) {
+			goto out;
+		}
+    }
+    alen += size;
+
 out:
     *alenp = alen;
     if (offset + alen > sin->din->size) {
@@ -612,16 +665,22 @@ out:
  * sfs_io - Rd/Wr file. the wrapper of sfs_io_nolock
             with lock protect
  */
+// 它有三个参数，node是对应文件的inode，iob是缓存，write表示是读还是写的布尔值（0表示读，1表示写）
 static inline int
 sfs_io(struct inode *node, struct iobuf *iob, bool write) {
+	// 先找到inode对应sfs和sin
     struct sfs_fs *sfs = fsop_info(vop_fs(node), sfs);
     struct sfs_inode *sin = vop_info(node, sfs_inode);
+	
     int ret;
     lock_sin(sin);
     {
         size_t alen = iob->io_resid;
+		// 然后调用sfs_io_nolock函数进行读取文件操作。
+        // 实参：Simple file system整体框架的指针sfs， Simple file system内存指针sfs， iob->io_base， iob是缓存指针， alen = iob->io_resid， write是读写标志符（0表示读，1表示写）
         ret = sfs_io_nolock(sfs, sin, iob->io_base, iob->io_offset, &alen, write);
         if (alen != 0) {
+			// 最后调用iobuf_skip函数调整iobuf的指针。
             iobuf_skip(iob, alen);
         }
     }
@@ -632,6 +691,7 @@ sfs_io(struct inode *node, struct iobuf *iob, bool write) {
 // sfs_read - read file
 static int
 sfs_read(struct inode *node, struct iobuf *iob) {
+	// sfs_read函数调用sfs_io函数。它有三个参数，node是对应文件的inode，iob是缓存，write表示是读还是写的布尔值（0表示读，1表示写）
     return sfs_io(node, iob, 0);
 }
 

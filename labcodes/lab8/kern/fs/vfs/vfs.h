@@ -33,12 +33,13 @@ struct iobuf;   // kernel or userspace I/O buffer (iobuf.h)
  *
  */
 struct fs {
-    union {
+    union {				// 具体文件系统的结构
         struct sfs_fs __sfs_info;                   
     } fs_info;                                     // filesystem-specific data 
-    enum {
+    enum {				// 文件系统类型
         fs_type_sfs_info,
     } fs_type;                                     // filesystem type 
+    // 在VFS层面统一的对文件系统进行处理
     int (*fs_sync)(struct fs *fs);                 // Flush all dirty buffers to disk 
     struct inode *(*fs_get_root)(struct fs *fs);   // Return root inode of filesystem.
     int (*fs_unmount)(struct fs *fs);              // Attempt unmount of filesystem.

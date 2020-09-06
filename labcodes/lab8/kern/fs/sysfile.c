@@ -77,7 +77,7 @@ sysfile_read(int fd, void *base, size_t len) {
         if ((alen = IOBUF_SIZE) > len) {
             alen = len;
         }
-        ret = file_read(fd, buffer, alen, &alen);
+        ret = file_read(fd, buffer, alen, &alen);		// 这个函数是读文件的核心函数。函数有4个参数，fd是文件描述符，base是缓存的基地址，len是要读取的长度，copied_store存放实际读取的长度。
         if (alen != 0) {
             lock_mm(mm);
             {

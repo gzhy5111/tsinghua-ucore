@@ -73,11 +73,11 @@ default_init_memmap(struct Page *base, size_t n) {
         assert(PageReserved(p));
         p->flags = p->property = 0;
         set_page_ref(p, 0);
+        SetPageProperty(p);
+        list_add_before(&free_list, &(p->page_link));
     }
     base->property = n;
-    SetPageProperty(base);
     nr_free += n;
-    list_add(&free_list, &(base->page_link));
 }
 
 static struct Page *
@@ -86,57 +86,103 @@ default_alloc_pages(size_t n) {
     if (n > nr_free) {
         return NULL;
     }
-    struct Page *page = NULL;
+
+    list_entry_t *len;			// 跟以前的p和q双指针差不多，le相当于前指针，len后指针
     list_entry_t *le = &free_list;
     while ((le = list_next(le)) != &free_list) {
         struct Page *p = le2page(le, page_link);
         if (p->property >= n) {
-            page = p;
-            break;
+            // 分配页数
+            int i;
+            for (i = 0; i < n; i++) {
+            	len = list_next(le);
+            	struct Page *pp = le2page(le, page_link);
+            	// 每一页的标志位改写
+            	// 被内核所保留
+            	SetPageReserved(pp);
+            	// 不是头页
+            	ClearPageProperty(pp);
+            	// 既然分配好了，下一步就将其从freelist中删除
+            	list_del(le);
+            	le = len;
+            }
+            if (p->property > n) {
+				// p指针移动到顶部（这里好象是反着的，其实到了头页）
+				// 修改头页的标志位，可参考高书8.3.2
+				//struct Page *p = le2page(le, page_link);
+				le2page(le, page_link)->property = p->property - n;
+			}
+            // 修改头页的标志位
+            ClearPageProperty(p);
+            SetPageReserved(p);
+            nr_free -= n;
+            return p;
         }
     }
-    if (page != NULL) {
-        list_del(&(page->page_link));
-        if (page->property > n) {
-            struct Page *p = page + n;
-            p->property = page->property - n;
-            list_add(&free_list, &(p->page_link));
-    }
-        nr_free -= n;
-        ClearPageProperty(page);
-    }
-    return page;
+    return NULL;
 }
 
 static void
 default_free_pages(struct Page *base, size_t n) {
     assert(n > 0);
-    struct Page *p = base;
-    for (; p != base + n; p ++) {
-        assert(!PageReserved(p) && !PageProperty(p));
-        p->flags = 0;
-        set_page_ref(p, 0);
+    // 断言是被内核保留页
+    // 这里我不明白为什么申请和释放都标记为“内核保留”？？？
+    assert(PageReserved(base));
+    struct Page *p;
+    list_entry_t *le = &free_list;
+    while ((le = list_next(le)) != &free_list) {
+    	p = le2page(le, page_link);
+		if (p>base) {
+			break;
+		}
     }
-    base->property = n;
+    for (p=base; p < base + n; p ++) {
+    	// 因为被释放了，所以重新加回到freelist中
+    	list_add_before(le, &(p->page_link));
+    	// 每一页的标志位不用改了，改下头页就行了
+    }
+
+    // 下面这几句话是有顺序的？？？
+    base->flags = 0;
+    set_page_ref(base, 0);
+    // 声明是头页
     SetPageProperty(base);
-    list_entry_t *le = list_next(&free_list);
-    while (le != &free_list) {
-        p = le2page(le, page_link);
-        le = list_next(le);
-        if (base + base->property == p) {
-            base->property += p->property;
-            ClearPageProperty(p);
-            list_del(&(p->page_link));
-        }
-        else if (p + p->property == base) {
-            p->property += base->property;
-            ClearPageProperty(base);
-            base = p;
-            list_del(&(p->page_link));
-        }
+    // 记录空闲页的数目n
+    base->property = n;
+
+
+
+    // 向高位合并
+    p = le2page(le, page_link);
+    // p在高地址，base在低地址
+    if (p == base + n) {
+    	// 下面的base的property改下
+    	base->property = base->property + p->property;
+    	// 中间那层打掉了，参考高书图8-5
+    	p->property = 0;
+    }
+
+    // 向低位合并，参考高书图8-6
+    // 现在是在空闲结点（高书中间下面的那个），指针先往前移一个结点，就是高书图8-6(a)最中间的结点（p指向的那个）
+    le = list_prev(&base->page_link);
+    p = le2page(le, page_link);
+    // p指向中间上面结点的头页，base指向中间下面的结点的头页
+    if (le != &free_list && p == base - 1) {
+    	// 直到找到右边的空闲页
+    	while (le != &free_list) {
+    		// 中间上面的结点非空
+    		if (p->property > 0) {
+    			p->property = base->property + p->property;
+    			base->property = 0;
+    			break;
+    		}
+    		// 那没找到右边空间页，就往前走
+    		le = list_prev(le);
+    		p = le2page(le, page_link);
+
+    	}
     }
     nr_free += n;
-    list_add(&free_list, &(base->page_link));
 }
 
 static size_t

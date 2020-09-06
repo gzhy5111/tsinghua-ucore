@@ -7,18 +7,18 @@
 #include <list.h>
 
 /* [wikipedia]The simplest Page Replacement Algorithm(PRA) is a FIFO algorithm. The first-in, first-out
- * page replacement algorithm is a low-overhead algorithm that requires little book-keeping on
- * the part of the operating system. The idea is obvious from the name - the operating system
+ * page replacement algorithm is a low-overhead（低开销） algorithm that requires little book-keeping on
+ * the part of the operating system. The idea is obvious（明显的） from the name - the operating system
  * keeps track of all the pages in memory in a queue, with the most recent arrival at the back,
- * and the earliest arrival in front. When a page needs to be replaced, the page at the front
- * of the queue (the oldest page) is selected. While FIFO is cheap and intuitive, it performs
- * poorly in practical application. Thus, it is rarely used in its unmodified form. This
- * algorithm experiences Belady's anomaly.
+ * and the earliest（最早） arrival in front. When a page needs to be replaced, the page at the front
+ * of the queue (the oldest page) is selected. While FIFO is cheap and intuitive（直觉）, it performs（执行）
+ * poorly in practical（实际的） application. Thus, it is rarely used in its unmodified form. This
+ * algorithm experiences Belady's anomaly（异常）.
  *
  * Details of FIFO PRA
- * (1) Prepare: In order to implement FIFO PRA, we should manage all swappable pages, so we can
+ * (1) Prepare: In order to implement（执行） FIFO PRA, we should manage all swappable pages, so we can
  *              link these pages into pra_list_head according the time order. At first you should
- *              be familiar to the struct list in list.h. struct list is a simple doubly linked list
+ *              be familiar（熟悉的） to the struct list in list.h. struct list is a simple doubly linked list
  *              implementation. You should know howto USE: list_init, list_add(list_add_after),
  *              list_add_before, list_del, list_next, list_prev. Another tricky method is to transform
  *              a general list struct to a special struct (such as struct page). You can find some MACRO:
@@ -48,9 +48,11 @@ _fifo_map_swappable(struct mm_struct *mm, uintptr_t addr, struct Page *page, int
     list_entry_t *entry=&(page->pra_page_link);
  
     assert(entry != NULL && head != NULL);
-    //record the page access situlation
+    //record the page access situlation（情况）
     /*LAB3 EXERCISE 2: YOUR CODE*/ 
     //(1)link the most recent arrival page at the back of the pra_list_head qeueue.
+    // 在头部插入
+    list_add(head, entry);				// 用list_add()和list_add_after()都行，查看下这个双向链表的操作函数（在list.h）就知道了。
     return 0;
 }
 /*
@@ -66,7 +68,13 @@ _fifo_swap_out_victim(struct mm_struct *mm, struct Page ** ptr_page, int in_tick
      /* Select the victim */
      /*LAB3 EXERCISE 2: YOUR CODE*/ 
      //(1)  unlink the  earliest arrival page in front of pra_list_head qeueue
+     // 尾部删除，因为是双向链表，所以很方便找到尾部
+     // tail指向尾部
+     list_entry_t *tail = head->prev;
+     struct Page *page = le2page(tail, pra_page_link);
+     list_del(tail);
      //(2)  set the addr of addr of this page to ptr_page
+     *ptr_page = page;
      return 0;
 }
 
