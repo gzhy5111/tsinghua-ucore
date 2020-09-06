@@ -22,11 +22,12 @@ struct file;
 /*
  * process's file related informaction
  */
+// 进程对文件进行进一步的处理操作
 struct files_struct {
-    struct inode *pwd;      // inode of present working directory
-    struct file *fd_array;  // opened files array
-    int files_count;        // the number of opened files
-    semaphore_t files_sem;  // lock protect sem
+    struct inode *pwd;      // 当前工作目录；inode of present working directory
+    struct file *fd_array;  // 打开的文件列表；opened files array
+    int files_count;        // 打开的文件个数；the number of opened files
+    semaphore_t files_sem;  // 用于互斥的信号量；lock protect sem
 };
 
 #define FILES_STRUCT_BUFSIZE                       (PGSIZE - sizeof(struct files_struct))

@@ -35,10 +35,10 @@ struct inode {
         inode_type_device_info = 0x1234,
         inode_type_sfs_inode_info,
     } in_type;
-    int ref_count;
-    int open_count;
-    struct fs *in_fs;
-    const struct inode_ops *in_ops;
+    int ref_count;				// 此inode的引用个数
+    int open_count;				// 打开此inode对应文件的个数
+    struct fs *in_fs;			// 决定该inode所属的文件系统
+    const struct inode_ops *in_ops;// 跟inode本身相关
 };
 
 #define __in_type(type)                                             inode_type_##type##_info
@@ -166,6 +166,7 @@ void inode_kill(struct inode *node);
  *                      refers to. May destroy PATHNAME. Should increment
  *                      refcount on inode handed back.
  */
+// 提供了统一的接口
 struct inode_ops {
     unsigned long vop_magic;
     int (*vop_open)(struct inode *node, uint32_t open_flags);

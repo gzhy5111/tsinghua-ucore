@@ -11,16 +11,16 @@ struct inode;
 struct stat;
 struct dirent;
 
-struct file {
+struct file {				// proc->file，与进程挂钩
     enum {
         FD_NONE, FD_INIT, FD_OPENED, FD_CLOSED,
-    } status;
-    bool readable;
-    bool writable;
-    int fd;
-    off_t pos;
-    struct inode *node;
-    int open_count;
+    } status;				// 文件状态
+    bool readable;			// 是否可读
+    bool writable;			// 是否可写
+    int fd;					// 文件在fd_array中的索引值
+    off_t pos;				// 访问文件的当前位置
+    struct inode *node;		// 该文件对应内存的inode指针
+    int open_count;			// 打开此文件的次数，数目？
 };
 
 void fd_array_init(struct file *fd_array);

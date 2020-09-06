@@ -57,6 +57,26 @@ idt_init(void) {
      /* LAB5 YOUR CODE */ 
      //you should update your lab1 code (just add ONE or TWO lines of code), let user app to use syscall to get the service of ucore
      //so you should setup the syscall interrupt gate in here
+
+	extern uintptr_t __vectors[];
+
+	// 计算出有多少个IDT，依次遍历他们
+	int i;
+	for (i = 0; i < sizeof(idt) / sizeof(struct gatedesc); i++) {
+
+		// 初始化若干IDT
+		SETGATE(idt[i], 0, GD_KTEXT, __vectors[i], DPL_KERNEL);
+	}
+
+	// T_SWITCH_TOK 的发生时机是在用户空间的，所以对应的dpl需要修改为DPL_USER。
+	//SETGATE(idt[T_SWITCH_TOK], 0, GD_KTEXT, __vectors[T_SWITCH_TOK], DPL_USER);
+
+	// 用户态中断门，使用户态可以调用系统中断（从实验手册来的）
+	SETGATE(idt[T_SYSCALL], 1, GD_KTEXT, __vectors[T_SYSCALL], DPL_USER);
+
+	// 加载IDT，只有特权级为0才允许执行
+	lidt(&idt_pd);
+
 }
 
 static const char *
@@ -232,6 +252,20 @@ trap_dispatch(struct trapframe *tf) {
          *    Every tick, you should update the system time, iterate the timers, and trigger the timers which are end to call scheduler.
          *    You can use one funcitons to finish all these things.
          */
+
+		ticks++;
+		run_timer_list();
+
+//		if (ticks % TICK_NUM == 0) {
+//			print_ticks();
+//			current->need_resched = 1;
+//			// 246行的注释说：
+//			// 你应该更新你的lab5代码(只增加一两行代码):
+//			// 每次滴答，你应该更新系统时间，迭代计时器，并触发计时器结束调用调度器。
+//			// 你可以用一个函数来完成所有这些事情。
+//
+//		}
+
         break;
     case IRQ_OFFSET + IRQ_COM1:
     case IRQ_OFFSET + IRQ_KBD:

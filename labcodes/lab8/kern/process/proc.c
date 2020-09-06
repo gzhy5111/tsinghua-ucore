@@ -82,8 +82,8 @@ struct proc_struct *current = NULL;
 static int nr_process = 0;
 
 void kernel_thread_entry(void);
-void forkrets(struct trapframe *tf);
-void switch_to(struct context *from, struct context *to);
+void forkrets(struct trapframe *tf);						// 调用 trap/trapentry.S 中的 forkrets:
+void switch_to(struct context *from, struct context *to);	// 调用switch.S
 
 // alloc_proc - alloc a proc_struct and init all fields of proc_struct
 static struct proc_struct *
@@ -114,15 +114,71 @@ alloc_proc(void) {
 	 */
      //LAB6 YOUR CODE : (update LAB5 steps)
     /*
-     * below fields(add in LAB6) in proc_struct need to be initialized
-     *     struct run_queue *rq;                       // running queue contains Process
-     *     list_entry_t run_link;                      // the entry linked in run queue
-     *     int time_slice;                             // time slice for occupying the CPU
+     * below fields（以下字段）(add in LAB6) in proc_struct need to be initialized（初始化）
+     * 当然，这些字段都在 proc.h 头文件中的 proc_struct 结构体中定义过了。
+     *     struct run_queue *rq;                       // running queue contains Process（运行队列）
+     *     list_entry_t run_link;                      // the entry linked in run queue（运行队列指针）
+     *     int time_slice;                             // time slice for occupying the CPU（时间片）
      *     skew_heap_entry_t lab6_run_pool;            // FOR LAB6 ONLY: the entry in the run pool
      *     uint32_t lab6_stride;                       // FOR LAB6 ONLY: the current stride of the process
      *     uint32_t lab6_priority;                     // FOR LAB6 ONLY: the priority of process, set by lab6_set_priority(uint32_t)
      */
     //LAB8:EXERCISE2 YOUR CODE HINT:need add some code to init fs in proc_struct, ...
+
+    	/*
+    	 * 执行的是第一步初始化工作
+    	 */
+
+    	proc->state = PROC_UNINIT;							// 设置了进程的状态为“初始”态，这表示进程已经 “出生”了，正在获取资源茁壮成长中；
+
+    	proc->pid = -1;										// 未分配的进程pid是-1 先设置pid为无效值-1，用户调完alloc_proc函数后再根据实际情况设置pid。
+															// 设置了进程的pid为-1，这表示进程的“身份证号”还没有办好；
+
+    	proc->cr3 = boot_cr3;								// boot_cr3指向了uCore启动时建立好的内核虚拟空间的页目录表首地址
+															// 表明由于该内核线程在内核中运行，故采用为uCore内核已经建立的页表，即设置为在uCore内核页表的起始地址boot_cr3。
+
+    	proc->runs = 0;
+		proc->kstack = 0;									// 记录了分配给该进程/线程的内核栈的位置
+		proc->need_resched = 0;								// 是否需要调度
+		proc->parent = NULL;								// 父进程
+		proc->mm = 0;									// 虚拟内存结构体（lab4实验可忽略）
+		/*
+		 * void *memset(void *s, int c, unsigned long n)
+		 * 函数解释：将s中当前位置后面的n个字节 （typedef unsigned int size_t ）用 ch 替换并返回 s
+		 * 该函数用于清空一个结构体中所有的成员变量，下面解释三个参数：
+		 * 第一个参数：位置指针，例如数组名、结构体首地址
+		 * 第二个参数：替换为什么
+		 * memset 函数的第三个参数 n 的值一般用 sizeof() 获取
+		 */
+		memset(&(proc->context), 0, sizeof(struct context)); 	// 上下文结构体
+		proc->tf = NULL;
+
+		proc->flags = 0;
+		// 清空数组就不用sizeof了，第三个参数直接写数组的大小-1即可
+		memset(proc->name, 0, PROC_NAME_LEN);
+
+		// LAB5新增的
+		proc->wait_state = 0;							// 进程刚开始创建，都是等待状态。原因是因为需要调度。
+		proc->cptr = proc->yptr = proc->optr = NULL;
+
+		// LAB6新增
+		proc->rq = NULL;                       			// 运行队列，刚alloc进程肯定没有放入任何队列，所以为NULL
+		// 下面这个 run_link 我刚开始也不知道是什么玩意儿，但我知道 run_link 肯定要在调度函数中使用到。我就去 default_sched.c 里面搜，慢慢就懂用途了。
+		// run_link 是个双向链表，list_entry_t 这个结构体我们已经很熟悉了，ucore整个数据结构很多都基于 list_entry_t 。
+		// 那我们想啊，你要用这个双向链表，这个数据结构本身已经封装好了，那应该是有函数可以供其初始化的，也就是新创建一个双向链表。
+		// lish.h 文件中查下，可以用 list_init(list_entry_t *elm) 这个函数新建。
+		list_init(&(proc->run_link));                   // 运行队列的指针
+		proc->time_slice = 0;                           // 时间片，初始化为0
+		// 下面这 skew_heap_entry_t lab6_run_pool;
+		// lab6_run_pool 又是啥玩意儿？？
+		// 点 skew_heap_entry_t 进入看看，指不定和刚才的 list_entry_t 是差不多的东西，或许已经封装好函数了可以直接调用。
+		// 果然发现一个函数 skew_heap_init(skew_heap_entry_t *a)
+		skew_heap_init(&(proc->lab6_run_pool));			// FOR LAB6 ONLY: the entry in the run pool
+		proc->lab6_stride = 0;                       	// 初始化步数
+		proc->lab6_priority = 0;                     	// 初始化优先级
+
+		// LAB8新增的
+		proc->filesp = NULL;
     }
     return proc;
 }
@@ -171,16 +227,21 @@ remove_links(struct proc_struct *proc) {
 }
 
 // get_pid - alloc a unique pid for process
+// get_pid函数确保了新进程说分配的pid是唯一的 LAB4实验中的问题需要解答该函数是如何实现的唯一分配
 static int
 get_pid(void) {
     static_assert(MAX_PID > MAX_PROCESS);
     struct proc_struct *proc;
     list_entry_t *list = &proc_list, *le;
+
+    // 两个静态变量 next_safe = MAX_PID, last_pid = MAX_PID; 指向最大可以分配的pid号码
     static int next_safe = MAX_PID, last_pid = MAX_PID;
+
     if (++ last_pid >= MAX_PID) {
         last_pid = 1;
         goto inside;
     }
+
     if (last_pid >= next_safe) {
     inside:
         next_safe = MAX_PID;
@@ -189,19 +250,28 @@ get_pid(void) {
         while ((le = list_next(le)) != list) {
             proc = le2proc(le, list_link);
             if (proc->pid == last_pid) {
+            	// 如果last_pid+1 后等于MAX_PID，意味着pid已经分配完了
                 if (++ last_pid >= next_safe) {
-                    if (last_pid >= MAX_PID) {
+                    // 如果last_pid超出最大pid范围，则last_pid重新从1开始编号
+                	if (last_pid >= MAX_PID) {
                         last_pid = 1;
                     }
                     next_safe = MAX_PID;
+                    // 重新编号去 现在 last_pid == 1; next_safe == MAX_PID;
                     goto repeat;
                 }
             }
+            // 上面的是需要重新编号的情况，下面是不需要的情况
+            // 满足 last_pid < proc->pid < next_safe
             else if (proc->pid > last_pid && next_safe > proc->pid) {
-                next_safe = proc->pid;
+                // last_pid < proc->pid < next_safe
+            	// last_pid < proc->pid
+            	//			< next_safe
+            	next_safe = proc->pid;
             }
         }
     }
+    // last_pid作为新颁发的编号
     return last_pid;
 }
 
@@ -209,14 +279,23 @@ get_pid(void) {
 // NOTE: before call switch_to, should load  base addr of "proc"'s new PDT
 void
 proc_run(struct proc_struct *proc) {
+	// current是当前正在运行的线程
+	// proc是将要运行的线程
+	/* 先判断下将要运行的线程是不是已经在运行中了 */
     if (proc != current) {
         bool intr_flag;
+        // prev是当前正在执行的线程
+        // next是准备要执行的线程
         struct proc_struct *prev = current, *next = proc;
+
+        // 禁止中断 目的是事务的隔离性 不让其冲突
         local_intr_save(intr_flag);
         {
             current = proc;
             load_esp0(next->kstack + KSTACKSIZE);
+            // 将当前的cr3寄存器修改为需要运行的线程（线程）的页目录表
             lcr3(next->cr3);
+            // 开始执行（切换线程函数）
             switch_to(&(prev->context), &(next->context));
         }
         local_intr_restore(intr_flag);
@@ -263,13 +342,18 @@ find_proc(int pid) {
 //       proc->tf in do_fork-->copy_thread function
 int
 kernel_thread(int (*fn)(void *), void *arg, uint32_t clone_flags) {
-    struct trapframe tf;
+    /*
+     * 我们来分析一下创建内核线程的函数kernel_thread：
+     */
+	/* 采用了局部变量tf来放置保存内核线程的临时中断帧 */
+	struct trapframe tf;
     memset(&tf, 0, sizeof(struct trapframe));
     tf.tf_cs = KERNEL_CS;
     tf.tf_ds = tf.tf_es = tf.tf_ss = KERNEL_DS;
     tf.tf_regs.reg_ebx = (uint32_t)fn;
     tf.tf_regs.reg_edx = (uint32_t)arg;
     tf.tf_eip = (uint32_t)kernel_thread_entry;
+    /* 把中断帧的指针传递给do_fork函数，do_fork函数会调用copy_thread函数在新创建的进程内核栈上专门给进程的中断帧分配一块空间。 */
     return do_fork(clone_flags | CLONE_VM, 0, &tf);
 }
 
@@ -461,7 +545,58 @@ do_fork(uint32_t clone_flags, uintptr_t stack, struct trapframe *tf) {
 	*    update step 1: set child proc's parent to current process, make sure current process's wait_state is 0
 	*    update step 5: insert proc_struct into hash_list && proc_list, set the relation links of process
     */
+
+    /*
+	 * 想干的事：创建当前内核线程的一个副本，它们的执行上下文、代码、数据都一样，但是存储位置不同，PID不同。
+	 */
+	// 调用alloc_proc() 为要创建的线程分配空间
+	// 如果第一步 alloc 都失败的话，应该来说是比较严重的错误。直接退出。
+	if ((proc = alloc_proc()) == NULL) {
+		goto fork_out;
+	}
+
+
+	proc->parent = current;
+	assert(proc->wait_state == 0);
+
+	// 获取被拷贝的进程的pid号 即父进程的pid
+	//proc->parent = current;
+	// 分配大小为 KSTACKPAGE 的页面作为进程内核堆栈
+	setup_kstack(proc);
+	// 为新进程创建新的虚存空间
+	// 注意！copy还调用了copy_range函数。
+	// copy_range函数：拷贝父进程的内存到新进程（LAB5 练习2）
+	copy_mm(clone_flags, proc);
+	// 拷贝原进程上下文到新进程
+	copy_thread(proc, stack, tf);
+
+
+	bool intr_flag;
+	// 停止中断
+	local_intr_save(intr_flag);
+	// {} 用来限定花括号中变量的作用域，使其不影响外面。
+	{
+		proc->pid = get_pid();
+		// 新进程添加到 hash方式组织的的进程链表，以便于以后对某个指定的线程的查找（速度更快）
+		hash_proc(proc);
+		// 将线程加入到所有线程的链表中，以便于调度
+		//list_add(&proc_list, &(proc->list_link));
+		// 将全局线程的数目加1
+		//nr_process ++;
+		set_links(proc);
+	}
+	// 允许中断
+	local_intr_restore(intr_flag);
+
+
+	// 唤醒新进程
+	wakeup_proc(proc);
+	// 新进程号
+	ret = proc->pid;
 	
+	// lab8新增
+	copy_files(clone_flags, proc);
+
 fork_out:
     return ret;
 
@@ -573,6 +708,188 @@ load_icode(int fd, int argc, char **kargv) {
      * (7) setup trapframe for user environment
      * (8) if up steps failed, you should cleanup the env.
      */
+
+	// 检查寄居蟹本身有没有肉，没肉才正常。后面可以分配新的内存结构体，新的页表等。
+	if (current->mm != NULL) {
+		// 如果当前进程的内存不为空，debug的时候会将其打印输出
+		panic("load_icode: current->mm must be empty.\n");
+	}
+
+	int ret = -E_NO_MEM;
+	struct mm_struct *mm;
+	// (1) 为当前进程建立新的内存管理结构体
+	if ((mm = mm_create()) == NULL) {
+		goto bad_mm;
+	}
+	// (2) 创建新的页表
+	if ((ret = setup_pgdir(mm)) != 0) {
+		goto bad_pgdir_cleanup_mm;
+	}
+	// (3) copy TEXT/DATA section, build BSS parts in binary to memory space of process。通过解析elf格式的文件header，得到代码段，数据段等格式在哪。
+	// (3.1) 读取文件中的原始数据内容并解析elfhdr。原来是从二进制程序中获取文件头，现在是从原始数据中获取。需要对之前的代码进行改写。
+	struct Page *page;
+	struct elfhdr _elf;
+	struct elfhdr *elf = &_elf;
+
+	size_t len = 0;
+	load_icode_read(fd, elf, sizeof(struct elfhdr), len);// 从磁盘上读取出ELF可执行文件的elf-header
+	// 然后判断下获得到的文件头是否合法（LAB5中3.3的内容）
+	len += sizeof(struct elfhdr);	// offset作为count，每次自增一个elf头文件结构体长度
+	if (elf->e_magic != ELF_MAGIC) {
+		ret = -E_INVAL_ELF;
+		goto bad_elf_cleanup_pgdir;
+	}
+
+	// (3.2) 找到代码段、数据段
+	struct proghdr _ph;
+	struct proghdr *ph = &_ph;
+	
+	uint32_t vm_flags, perm;
+	int i;		// 代码段个数循环临时变量, 接下来循环遍历每个段
+	for (i = 0; i < elf->e_phnum; i ++) {
+		load_icode_read(fd, ph, sizeof(struct proghdr), (elf->e_phoff + i * sizeof(struct proghdr)) );// 与上面的elfhdr部分不同，proghdr的大小是可以确定的
+		if (ph->p_type != ELF_PT_LOAD) {
+			continue ;
+		}
+		if (ph->p_filesz > ph->p_memsz) {
+			ret = -E_INVAL_ELF;
+			goto bad_cleanup_mmap;
+		}
+		if (ph->p_filesz == 0) {
+			continue ;
+		}
+		//(3.3) 调用mm_map构建与TEXT / DATA相关的vma
+		vm_flags = 0, perm = PTE_U;
+		if (ph->p_flags & ELF_PF_X) vm_flags |= VM_EXEC;			// 如果是代码段，拥有可执行属性
+		if (ph->p_flags & ELF_PF_W) vm_flags |= VM_WRITE;			// 如果是数据段，拥有可写属性
+		if (ph->p_flags & ELF_PF_R) vm_flags |= VM_READ;			// 如果是数据段，拥有可读属性
+		if (vm_flags & VM_WRITE) perm |= PTE_W;
+		// 通过 mm_map 函数完成对合法空间的建立，但还没有建立页表。
+		if ((ret = mm_map(mm, ph->p_va, ph->p_memsz, vm_flags, NULL)) != 0) {
+			goto bad_cleanup_mmap;
+		}
+
+	 	// Ps:可执行程序包括BSS段、数据段、代码段（也称文本段）
+	 	//	(3.4) 调用 pgdir_alloc_page 为 TEXT / DATA（代码段 / 数据段） 分配页面，读取文件中的内容并将其复制到新分配的页面中
+	 	// 拷贝到物理内存，建立虚地址和物理地址的映射关系
+		size_t off, size;
+		uintptr_t start = ph->p_va;
+		uintptr_t end = ph->p_va + ph->p_filesz;
+		uintptr_t la = ROUNDDOWN(start, PGSIZE);
+
+		ret = -E_NO_MEM;
+		while (start < end) {
+			if ((page = pgdir_alloc_page(mm->pgdir, la, perm)) == NULL) {	// 为 TEXT/DATA 段逐页分配物理内存空间
+				goto bad_cleanup_mmap;
+			}
+			off = start - la, size = PGSIZE - off, la += PGSIZE;
+			if (end < la) {
+				size -= la - end;
+			}
+			// 将磁盘上的 TEXT/DATA段 读入到分配好的内存空间中去，用到新的，有关磁盘读取的 load_icode_read 函数
+			load_icode_read(fd, page2kva(page) + off, size, ph->p_offset);
+//			memcpy(page2kva(page) + off, from, size);
+			start += size;
+			ph->p_offset += size;
+		}
+
+	  // 3.5 建立二进制程序的BSS部分
+		end = ph->p_va + ph->p_memsz;
+		if (start < la) {
+			/* ph->p_memsz == ph->p_filesz */
+			if (start == end) {
+				continue;
+			}
+			off = start + PGSIZE - la, size = PGSIZE - off;
+			if (end < la) {
+				size -= la - end;
+			}
+			memset(page2kva(page) + off, 0, size);
+			start += size;
+			assert((end < la && start == end) || (end >= la && start == la));
+		}
+		while (start < end) {
+			if ((page = pgdir_alloc_page(mm->pgdir, la, perm)) == NULL) {
+				goto bad_cleanup_mmap;
+			}
+			off = start - la, size = PGSIZE - off, la += PGSIZE;
+			if (end < la) {
+				size -= la - end;
+			}
+			memset(page2kva(page) + off, 0, size);
+			start += size;
+		}
+	}
+
+	// (4) 调用mm_map设置用户堆栈，并将参数放入用户堆栈
+	vm_flags = VM_READ | VM_WRITE | VM_STACK;
+	if ((ret = mm_map(mm, USTACKTOP - USTACKSIZE, USTACKSIZE, vm_flags, NULL)) != 0) {
+		goto bad_cleanup_mmap;
+	}
+
+	// 4.1给栈顶分配四个物理页
+	assert(pgdir_alloc_page(mm->pgdir, USTACKTOP-PGSIZE , PTE_USER) != NULL);
+	assert(pgdir_alloc_page(mm->pgdir, USTACKTOP-2*PGSIZE , PTE_USER) != NULL);
+	assert(pgdir_alloc_page(mm->pgdir, USTACKTOP-3*PGSIZE , PTE_USER) != NULL);
+	assert(pgdir_alloc_page(mm->pgdir, USTACKTOP-4*PGSIZE , PTE_USER) != NULL);
+	
+	// 4.2所有参数加起来的长度。lab8与之前的lab5不同，传进来的命令行参数是有个数的，个数为 argc。下面对其进行遍历以确定参数具体占用多少空间
+	int args_size = 0;
+	int j;
+	for (j = 0; j < argc; j++)
+	{
+		args_size += (strlen(kargv[j]) + 1);	// +1是带了字符串最后面的结束符 \0
+	}
+	
+	// 4.3用户栈顶 减去所有参数加起来的长度 再 4字节对齐 找到 真正存放字符串参数的栈的位置
+	uint32_t stacktop = USTACKTOP;
+	args_size = (args_size / sizeof(long) + 1) * sizeof(long); //alignment
+	args_size += (2 + argc) * sizeof(long);
+	stacktop = USTACKTOP - args_size; // 根据参数需要在栈上占用的空间来推算出，传递了参数之后栈顶的位置
+	uint32_t pagen = args_size / PGSIZE + 4;
+
+	// (5) setup current process's mm, cr3, reset pgidr (using lcr3 MARCO)
+	mm_count_inc(mm);
+	current->mm = mm;
+	current->cr3 = PADDR(mm->pgdir);
+	lcr3(PADDR(mm->pgdir));
+
+	// (6) setup uargc and uargv in user stacks —— 在用户堆栈中设置uargc和uargv
+	uint32_t now_pos = stacktop, argvp;
+	*((uint32_t *) now_pos) = argc; // 设置好argc参数（压入栈）
+	now_pos += 4;
+	*((uint32_t *) now_pos) = argvp = now_pos + 4; // 设置argv数组的位置
+	now_pos += 4;
+	now_pos += argc * 4;
+	int k;
+	for (k = 0; k < argc; ++ k) {
+		args_size = strlen(kargv[k]) + 1;  // 将argv[j]指向的数据拷贝到用户栈中
+		memcpy((void *) now_pos, kargv[k], args_size);
+		*((uint32_t *) (argvp + k * 4)) = now_pos; // 设置好用户栈中argv[j]的数值
+		now_pos += args_size;
+	}
+
+	// (7) 为用户环境设置trapframe。这里是很大的一部分，涉及到特权级转换，因为我们知道特权级转换是通过中断完成的。同时也时lab1 challenge部分内容。
+	struct trapframe *tf = current->tf;
+	memset(tf, 0, sizeof(struct trapframe));
+	tf->tf_cs = USER_CS;
+	tf->tf_ds = tf->tf_es = tf->tf_ss = USER_DS;
+	tf->tf_esp = stacktop;
+	tf->tf_eip = elf->e_entry;			// 中断返回现场。可以执行elf文件的开始部分。即第6部分的作用就是伪造中断返回现场。
+	tf->tf_eflags = FL_IF;				// 允许中断
+	// (8) if up steps failed, you should cleanup the env. —— 如果up steps失败，则应清理环境。
+
+	ret = 0;
+out:
+	return ret;
+bad_cleanup_mmap:
+	exit_mmap(mm);
+bad_elf_cleanup_pgdir:
+	put_pgdir(mm);
+bad_pgdir_cleanup_mm:
+	mm_destroy(mm);
+bad_mm:
+	goto out;
 }
 
 // this function isn't very correct in LAB8
@@ -651,14 +968,16 @@ do_execve(const char *name, int argc, const char **argv) {
         goto execve_exit;
     }
     if (mm != NULL) {
-        lcr3(boot_cr3);
+        lcr3(boot_cr3);						// 清空肉，只剩下壳
         if (mm_count_dec(mm) == 0) {
-            exit_mmap(mm);
+            // 以下三个函数功能：把原来进程的内存管理区域清空
+        	exit_mmap(mm);
             put_pgdir(mm);
             mm_destroy(mm);
         }
         current->mm = NULL;
     }
+    // 加载新的肉
     ret= -E_NO_MEM;;
     if ((ret = load_icode(fd, argc, kargv)) != 0) {
         goto execve_exit;
@@ -850,6 +1169,11 @@ proc_init(void) {
         list_init(hash_list + i);
     }
 
+    /*
+     * 第0个内核线程 -- idleproc
+     * 把proc进行初步初始化（即把proc_struct中的各个成员变量清零）。但有些成员变量设置了特殊的值（这里是第一步初始化，后面还需要进一步初始化）
+     * 第一步初始化可参考alloc_proc函数
+     */
     if ((idleproc = alloc_proc()) == NULL) {
         panic("cannot alloc idleproc.\n");
     }
@@ -885,8 +1209,10 @@ proc_init(void) {
 void
 cpu_idle(void) {
     while (1) {
+    	// 只要current标志为need_resched（即：1），马上就调用schedule函数要求调度器切换其他进程执行。
         if (current->need_resched) {
             schedule();
+            // 第0个内核线程主要工作是完成内核中各个子系统的初始化，然后就通过执行cpu_idle函数开始过退休生活了。所以uCore接下来还需创建其他进程来完成各种工作
         }
     }
 }

@@ -6,6 +6,7 @@
 /*
  * iobuf is a buffer Rd/Wr status record
  */
+// iob缓存结构体
 struct iobuf {
     void *io_base;     // the base addr of buffer (used for Rd/Wr)
     off_t io_offset;   // current Rd/Wr position in buffer, will have been incremented by the amount transferred
